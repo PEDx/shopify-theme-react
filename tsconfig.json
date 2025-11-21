@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "es2020",
+    "jsx": "react-jsx",
+    "lib": [
+      "ESNext",
+      "DOM"
+    ],
+    "baseUrl": ".",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "paths": {
+      "~/*": ["./src/*"]
+    },
+    "resolveJsonModule": true,
+    "types": [
+      "vite/client",
+      "@types/node"
+    ],
+    "strict": true,
+    "strictNullChecks": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true
+  },
+  "exclude": [
+    "**/dist",
+    "**/node_modules",
+    "**/test"
+  ]
+}
