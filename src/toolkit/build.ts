@@ -5,9 +5,17 @@ import { basename, extname, join } from 'path';
 import type { Rollup } from 'vite';
 import { createRequire } from 'module';
 import { Script } from 'vm';
-import { build_log, generate_release_liquid, get_liquid_comment, generate_build_banner, get_comment } from './utils.ts';
+import {
+  build_log,
+  generate_release_liquid,
+  get_liquid_comment,
+  generate_build_banner,
+  get_comment,
+  liquid_section_id,
+} from './utils.ts';
 import { renderStaticApp } from './serverRenderer.ts';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { generate_debug_html } from './html.ts';
 
 const REACT_APP_FILENAME_PREFIX = 'react';
 export const ENTRY_FILE_NAME = 'main.tsx';
@@ -29,7 +37,6 @@ const get_build_config = (app_dir: string) => {
   const server_side_build_config = mergeConfig<UserConfig, UserConfig>(common_build_config, {
     build: {
       ssr: join(app_dir, ENTRY_FILE_NAME),
-      ssrEmitAssets: false,
       minify: false,
       rollupOptions: {
         output: {
@@ -41,24 +48,36 @@ const get_build_config = (app_dir: string) => {
     },
   });
 
-  const client_side_build_config = mergeConfig<UserConfig, UserConfig>(common_build_config, {
-    plugins: [tailwindcss()],
-    build: {
-      ssrManifest: true,
-      rollupOptions: {
-        output: {
-          format: 'umd',
-          globals: {
-            react: 'React',
-            'react-dom': 'ReactDOM',
-            'react-dom/client': 'ReactDOMClient',
+  const client_side_build_config = mergeConfig<UserConfig, UserConfig>(
+    {},
+    {
+      mode: 'production',
+      plugins: [tailwindcss()],
+      appType: 'custom',
+      build: {
+        cssCodeSplit: false,
+        minify: false,
+        rollupOptions: {
+          external: ['react', 'react-dom', 'react-dom/client'],
+          output: {
+            globals: {
+              react: 'React',
+              'react-dom': 'ReactDOM',
+              'react-dom/client': 'ReactDOMClient',
+            },
           },
-          entryFileNames: '[name].js',
         },
+        lib: {
+          entry: join(app_dir, ENTRY_FILE_NAME),
+          formats: ['es'],
+        },
+        write: false,
       },
-      write: false,
+      define: {
+        'process.env.NODE_ENV': JSON.stringify('production'),
+      },
     },
-  });
+  );
 
   return {
     common_build_config,
@@ -73,11 +92,11 @@ export const build = async (app_dir: string) => {
   const { client_side_build_config, server_side_build_config } = get_build_config(app_dir);
 
   build_log('Building client-side bundle...');
-  const client_side_bundle = (await viteBuild(client_side_build_config)) as Rollup.RollupOutput;
+  const client_side_bundle = (await viteBuild(client_side_build_config)) as Rollup.RollupOutput[];
 
-  const client_side_bundle_chunk_output = client_side_bundle.output.find((output) => output.type === 'chunk');
+  const client_side_bundle_chunk_output = client_side_bundle[0].output.find((output) => output.type === 'chunk');
 
-  const client_side_bundle_style_output = client_side_bundle.output.find(
+  const client_side_bundle_style_output = client_side_bundle[0].output.find(
     (output) => output.type === 'asset' && extname(output.fileName) === '.css',
   ) as Rollup.OutputAsset;
 
@@ -101,7 +120,6 @@ export const build = async (app_dir: string) => {
     };
   } = script.runInThisContext({ displayErrors: true });
   const html = await renderStaticApp(app.default.app);
-  console.log(html);
 
   build_log('Build completed');
 
@@ -121,13 +139,16 @@ export const build = async (app_dir: string) => {
   const script_file_name = join(output_dir, script_name);
   const style_file_name = join(output_dir, style_name);
   const liquid_file_name = join(output_dir, liquid_name);
+  const debug_html_file_name = join(output_dir, 'index.html');
   const schema = JSON.stringify(app.default.schema || {});
 
   const liquid_content = generate_release_liquid({ html, script_name, style_name, schema });
+  const debug_html = generate_debug_html(html, script_name, style_name);
 
   writeFileSync(script_file_name, build_banner.concat(client_script as string));
   writeFileSync(style_file_name, build_banner.concat(client_style as string));
   writeFileSync(liquid_file_name, liquid_comment.concat(liquid_content));
+  writeFileSync(debug_html_file_name, debug_html);
 };
 
 build('src/project/sections/example');
